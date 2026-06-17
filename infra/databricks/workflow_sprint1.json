@@ -1,0 +1,94 @@
+{
+  "name": "sales-companion-sprint1-setup",
+  "description": "Sprint 1: Unity Catalog setup + Snowflake sync + document ingestion",
+  "email_notifications": {
+    "on_failure": ["naga.bathula@gmail.com"]
+  },
+  "tasks": [
+    {
+      "task_key": "setup_catalog",
+      "description": "Create Unity Catalog schemas, Delta tables, and Volumes",
+      "python_wheel_task": {
+        "entry_point": "setup_catalog",
+        "parameters": []
+      },
+      "libraries": [
+        { "pypi": { "package": "databricks-sdk>=0.20.0" } }
+      ],
+      "new_cluster": {
+        "spark_version": "14.3.x-scala2.12",
+        "node_type_id": "i3.xlarge",
+        "num_workers": 1,
+        "spark_conf": {
+          "spark.databricks.delta.preview.enabled": "true"
+        }
+      },
+      "timeout_seconds": 600
+    },
+    {
+      "task_key": "snowflake_sync",
+      "description": "Sync ARR, ACV, health, forecast, NRR from Snowflake",
+      "depends_on": [{ "task_key": "setup_catalog" }],
+      "python_wheel_task": {
+        "entry_point": "snowflake_sync",
+        "parameters": []
+      },
+      "libraries": [
+        { "pypi": { "package": "snowflake-connector-python>=3.6.0" } },
+        { "pypi": { "package": "snowflake-sqlalchemy>=1.5.0" } },
+        { "maven": { "coordinates": "net.snowflake:spark-snowflake_2.12:2.14.0-spark_3.4" } }
+      ],
+      "new_cluster": {
+        "spark_version": "14.3.x-scala2.12",
+        "node_type_id": "i3.2xlarge",
+        "num_workers": 2,
+        "spark_env_vars": {
+          "SNOWFLAKE_ACCOUNT": "{{secrets/sales-companion/snowflake-account}}",
+          "SNOWFLAKE_USER": "{{secrets/sales-companion/snowflake-user}}",
+          "SNOWFLAKE_PASSWORD": "{{secrets/sales-companion/snowflake-password}}"
+        }
+      },
+      "timeout_seconds": 1800,
+      "schedule": {
+        "quartz_cron_expression": "0 0 * * * ?",
+        "timezone_id": "America/Chicago"
+      }
+    },
+    {
+      "task_key": "document_ingestion",
+      "description": "Auto Loader: Volumes → parse → chunk → embed → Vector Search",
+      "depends_on": [{ "task_key": "setup_catalog" }],
+      "python_wheel_task": {
+        "entry_point": "document_pipeline",
+        "parameters": []
+      },
+      "libraries": [
+        { "pypi": { "package": "pymupdf>=1.23.0" } },
+        { "pypi": { "package": "python-docx>=1.1.0" } },
+        { "pypi": { "package": "tiktoken>=0.6.0" } },
+        { "pypi": { "package": "databricks-vectorsearch>=0.22" } }
+      ],
+      "new_cluster": {
+        "spark_version": "14.3.x-scala2.12",
+        "node_type_id": "i3.2xlarge",
+        "num_workers": 4,
+        "spark_env_vars": {
+          "VS_ENDPOINT": "sales-companion-vs",
+          "EMBED_ENDPOINT": "bge-large-en",
+          "DATABRICKS_HOST": "{{secrets/sales-companion/databricks-host}}",
+          "DATABRICKS_TOKEN": "{{secrets/sales-companion/databricks-token}}",
+          "ANTHROPIC_API_KEY": "{{secrets/sales-companion/anthropic-api-key}}"
+        }
+      },
+      "timeout_seconds": 7200
+    }
+  ],
+  "run_as": {
+    "service_principal_name": "sales-companion-sp"
+  },
+  "tags": {
+    "team": "data-ai",
+    "project": "sales-companion",
+    "sprint": "1"
+  }
+}

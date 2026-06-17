@@ -1,0 +1,35 @@
+{
+  "_comment": "Kafka Connect Salesforce Account CDC Source Connector.",
+  "name": "salesforce-cdc-account",
+  "config": {
+    "connector.class": "com.salesforce.kafka.connect.SalesforceSourceConnector",
+    "tasks.max": "1",
+
+    "salesforce.instance": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.instance}",
+    "salesforce.username": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.username}",
+    "salesforce.password": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.password}",
+    "salesforce.password.token": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.password.token}",
+    "salesforce.consumer.key": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.consumer.key}",
+    "salesforce.consumer.secret": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.consumer.secret}",
+
+    "salesforce.push.topic.name": "AccountChanges",
+    "salesforce.push.topic.query": "SELECT Id, Name, Industry, Segment__c, OwnerId, CSM__c, ARR__c, HealthScore__c, RiskTier__c, ContractEndDate__c, LastModifiedDate FROM Account",
+    "salesforce.push.topic.notify.for.fields": "All",
+    "salesforce.push.topic.notify.for.operation.create": "true",
+    "salesforce.push.topic.notify.for.operation.update": "true",
+    "salesforce.push.topic.notify.for.operation.delete": "false",
+    "salesforce.push.topic.notify.for.operation.undelete": "false",
+
+    "kafka.topic": "salesforce.account.cdc",
+
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "sales-companion.dlq.account",
+    "errors.deadletterqueue.topic.replication.factor": "3",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.log.enable": "true"
+  }
+}

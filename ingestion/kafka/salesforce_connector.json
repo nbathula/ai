@@ -1,0 +1,36 @@
+{
+  "_comment": "Kafka Connect Salesforce CDC Source Connector config. Deploy via MSK Connect or self-hosted Connect cluster. Credentials come from AWS Secrets Manager — never hardcode here.",
+  "name": "salesforce-cdc-opportunity",
+  "config": {
+    "connector.class": "com.salesforce.kafka.connect.SalesforceSourceConnector",
+    "tasks.max": "2",
+
+    "salesforce.instance": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.instance}",
+    "salesforce.username": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.username}",
+    "salesforce.password": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.password}",
+    "salesforce.password.token": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.password.token}",
+    "salesforce.consumer.key": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.consumer.key}",
+    "salesforce.consumer.secret": "${file:/opt/kafka/secrets/salesforce.properties:salesforce.consumer.secret}",
+
+    "salesforce.push.topic.name": "OpportunityChanges",
+    "salesforce.push.topic.query": "SELECT Id, AccountId, Name, Amount, ACV__c, StageName, CloseDate, Probability, ForecastCategory, DaysInCurrentStage__c, LastActivityDate, HealthScore__c, CreatedDate, LastModifiedDate FROM Opportunity",
+    "salesforce.push.topic.notify.for.fields": "All",
+    "salesforce.push.topic.notify.for.operation.create": "true",
+    "salesforce.push.topic.notify.for.operation.update": "true",
+    "salesforce.push.topic.notify.for.operation.delete": "true",
+    "salesforce.push.topic.notify.for.operation.undelete": "true",
+
+    "kafka.topic": "salesforce.opportunity.cdc",
+
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+
+    "errors.tolerance": "all",
+    "errors.deadletterqueue.topic.name": "sales-companion.dlq.opportunity",
+    "errors.deadletterqueue.topic.replication.factor": "3",
+    "errors.deadletterqueue.context.headers.enable": "true",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true"
+  }
+}
