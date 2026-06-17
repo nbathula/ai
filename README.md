@@ -14,6 +14,7 @@ AI-powered sales assistant for B2B SaaS teams. Ask natural language questions ab
 6. [Configuration Reference](#configuration-reference)
 7. [Runbook](#runbook)
 8. [How It Works](#how-it-works)
+9. [Enhancements](#enhancements)
 
 ---
 
@@ -478,3 +479,162 @@ Run `make eval` locally before merging.
 | User feedback | Thumbs up/down from UI | `monitoring.user_feedback` |
 | SQL accuracy | Every generated SQL logged with success/error | `monitoring.sql_log` |
 | Eval history | Pre-release gate results | `monitoring.eval_runs` |
+
+---
+
+## Enhancements
+
+Planned improvements across monitoring, agents, and user experience. Prioritized by impact.
+
+---
+
+### 1. Feedback Flywheel — Close the Loop on Thumbs Down
+
+**Current state:** Users can give thumbs up/down via the UI. Ratings are stored in `sales.monitoring.user_feedback` and linked to traces via `trace_id`. But the feedback stops there — it is not yet used to improve the system.
+
+**Enhancement:** Build a feedback review workflow that converts bad responses into new golden dataset questions:
+
+```
+User gives 👎
+      ↓
+sales.monitoring.user_feedback (rating=1)
+      ↓ (weekly review — Data/AI team)
+Join with agent_traces to get: query + response + groundedness_score
+      ↓
+Human reviews: Was the response wrong? Hallucinated? Missing data?
+      ↓
+If confirmed bad → add to eval/golden_dataset.json as a new test case
+      ↓
+Tighter eval gate → next deploy must pass this case
+      ↓
+Model/retrieval improved → groundedness rises → fewer thumbs down
+```
+
+This flywheel is the primary mechanism for improving answer quality over time. Without it, the eval golden set becomes stale and stops catching real failure modes.
+
+**Query to start the weekly review:**
+```sql
+SELECT
+  t.query,
+  t.response,
+  t.agent_type,
+  t.groundedness_score,
+  t.confidence_score,
+  t.generated_sql,
+  f.comment,
+  f.ts AS feedback_ts
+FROM sales.monitoring.user_feedback f
+JOIN sales.monitoring.agent_traces t USING (trace_id)
+WHERE f.rating = 1                              -- thumbs down only
+  AND f.ts > NOW() - INTERVAL 7 DAYS
+ORDER BY t.groundedness_score ASC;             -- worst groundedness first
+```
+
+---
+
+### 2. Databricks Lakehouse Monitoring — Automated Drift Alerts
+
+**Current state:** Monitoring data is written to Delta tables but there are no automated alerts. The ops team must query manually to detect problems.
+
+**Enhancement:** Wire Databricks Lakehouse Monitoring to watch `sales.monitoring.agent_traces` and alert when key metrics drift:
+
+| Metric | Alert Condition |
+|---|---|
+| `groundedness_score` | 7-day rolling average drops below 0.80 |
+| `total_latency_ms` | P95 exceeds 5,000ms over a 1-hour window |
+| `confidence_score` | Average drops below 0.70 |
+| `estimated_cost_usd` | Daily total exceeds budget threshold |
+| SQL failure rate | `executed_successfully = false` rate exceeds 10% |
+
+This removes the need for manual monitoring and surfaces regressions before users notice them.
+
+---
+
+### 3. `/metrics` Endpoint — Live Observability for Ops
+
+**Current state:** There is no programmatic way to check agent health without querying Delta directly.
+
+**Enhancement:** Add a `GET /metrics` endpoint to `serving/main.py` that returns a live snapshot:
+
+```json
+{
+  "period": "last_1h",
+  "total_calls": 142,
+  "avg_latency_ms": 1820,
+  "p95_latency_ms": 4100,
+  "avg_groundedness": 0.89,
+  "avg_confidence": 0.87,
+  "sql_failure_rate": 0.02,
+  "thumbs_up_rate": 0.81,
+  "estimated_cost_usd": 0.74
+}
+```
+
+This allows the ops team to scrape the endpoint in CloudWatch or Grafana without needing Databricks access.
+
+---
+
+### 4. Kafka Consumer Lag Alerting
+
+**Current state:** The DLT pipeline reads from MSK but there is no alert if the pipeline falls behind (e.g., DLT stops, MSK rebalances, Salesforce sends a spike of events).
+
+**Enhancement:** Add a CloudWatch alarm on the `kafka.consumer.group.lag` metric for the DLT consumer group. Alert the Data/AI team if lag exceeds 10,000 messages or if the consumer group goes inactive for more than 5 minutes. This ensures real-time data freshness SLA (<30s) is visibly broken when violated.
+
+---
+
+### 5. Missing Agents
+
+**Current state:** The solution design called for 5 agents. Only 2 are built (Pipeline Health, Customer Health). Three are missing:
+
+| Agent | What it answers | Retrieval |
+|---|---|---|
+| **Revenue Metrics Agent** | ARR by segment, NRR trend, expansion vs churn split, MRR movement | Text-to-SQL (`sales.metrics.arr`, `nrr`) |
+| **Document Agent** | Summarize a contract, pull a proposal, search call transcripts | Vector Search only |
+| **Sales Performance Agent** | Rep activity counts, win rate by rep/vertical, quota attainment per rep | Text-to-SQL (`sales.realtime.*`, `sales.crm.*`) |
+
+Currently, these question types fall through to the Pipeline Health agent via Text-to-SQL, which partially works but uses the wrong system prompt and routing context.
+
+---
+
+### 6. Conversation History — Stateful Follow-Up Questions
+
+**Current state:** Every query is stateless. If a user asks "Which accounts are at risk?" and follows up with "And what are their renewal dates?" — the second query has no memory of the first.
+
+**Enhancement:** Store conversation turns in a session store (Redis or Delta table keyed by `session_id`) and inject the last N turns into the LLM context window. This enables natural follow-up questions without the user having to repeat context.
+
+```python
+# In agents/router.py
+history = load_session_history(session_id, last_n=4)
+messages = history + [{"role": "user", "content": query}]
+```
+
+---
+
+### 7. Row-Level Security — Reps See Only Their Deals
+
+**Current state:** Unity Catalog schemas and tables are created, but row-level security has not been applied. Any authenticated user can query any deal or account.
+
+**Enhancement:** Apply Databricks row filters on `sales.realtime.opportunity_current` so that sales reps only see their own opportunities, while managers see their team and leaders see everything:
+
+```sql
+-- Row filter applied at Unity Catalog level
+CREATE ROW FILTER sales_rep_filter ON sales.realtime.opportunity_current
+AS (owner_id) -> is_account_group_member('sales-leaders')
+               OR owner_id = current_user();
+```
+
+This is enforced at the data layer — not the application layer — so it cannot be bypassed regardless of how the query is formed.
+
+---
+
+### Priority Order
+
+| # | Enhancement | Effort | Impact |
+|---|---|---|---|
+| 1 | Feedback flywheel (thumbs down → golden dataset) | Low | High — directly improves answer quality |
+| 2 | Row-level security | Medium | High — required before broad user rollout |
+| 3 | Conversation history | Medium | High — core UX expectation |
+| 4 | Missing agents (Revenue Metrics, Document, Sales Performance) | High | High — covers question types that currently fall through |
+| 5 | Lakehouse Monitoring drift alerts | Low | Medium — operational hygiene |
+| 6 | `/metrics` endpoint | Low | Medium — ops observability |
+| 7 | Kafka consumer lag alerting | Low | Medium — data freshness SLA enforcement |
