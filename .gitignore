@@ -1,36 +1,31 @@
+# Environment files — never commit secrets
+.env
+**/.env
+
 # Python
 __pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
+*.py[cod]
 *.egg-info/
+.venv/
 dist/
 build/
-.eggs/
-
-# Env / secrets
-.env
-.env.local
-.env.production.local
-*.tfvars
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Node
-frontend/node_modules/
-frontend/dist/
+node_modules/
+dist/
+.next/
 
-# MLflow
-mlruns/
-
-# Terraform state
-infra/terraform/.terraform/
-infra/terraform/terraform.tfstate
-infra/terraform/terraform.tfstate.backup
-infra/terraform/.terraform.lock.hcl
+# n8n / Docker
+job-agent/output/
 
 # macOS
 .DS_Store
+**/.DS_Store
 
-# IDE
-.vscode/
+# Editors
 .idea/
+.vscode/
+*.swp

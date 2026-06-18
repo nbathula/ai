@@ -1,0 +1,259 @@
+{
+  "name": "Job Search Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1-5" }] }
+      },
+      "id": "node-0001",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst profile = {\n  name: 'Naga Bathula',\n  experience_summary: 'Data and AI leader with 15+ years building data platforms and AI/ML capabilities at B2B SaaS companies. Expert in AWS, GCP, Databricks, LLM/RAG, and MLOps. Track record of scaling data teams and shipping production ML models.',\n  key_skills: ['Data Strategy','AI/ML Architecture','MLOps','LLMOps','Team Leadership','Databricks','AWS','GCP','Python','SQL'],\n  achievements: ['Built data platform serving 500+ users','Led 18-person data and engineering team','Deployed churn model reducing churn 22%','Drove $4M revenue via personalization models'],\n  salary_minimum: 200000,\n  search_queries: ['VP of Data','Director Data Science','Head of AI','Chief Data Officer','VP Machine Learning','Head of Data Engineering','Director of AI','VP Data Engineering','Director AI Engineering','Head of Data Infrastructure','Engineering Manager AI','Engineering Manager Data'],\n  disqualifiers: ['intern','junior level']\n};\nstaticData.profile = profile;\nreturn [{ json: { profile } }];"
+      },
+      "id": "node-0002",
+      "name": "Load User Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = $input.first().json.profile;\nreturn profile.search_queries.slice(0, 12).map(q => ({ json: { q } }));"
+      },
+      "id": "node-0003",
+      "name": "Build Search Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "engine", "value": "google_jobs" },
+            { "name": "q", "value": "={{ $json.q }}" },
+            { "name": "chips", "value": "date_posted:week" },
+            { "name": "api_key", "value": "={{ $env.SERPAPI_KEY }}" }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "node-0004",
+      "name": "Search Jobs (SerpAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nfor (const item of $input.all()) {\n  for (const j of (item.json.jobs_results || [])) {\n    const applyUrl = (j.apply_options || [])[0]?.link || `https://www.google.com/search?q=${encodeURIComponent((j.title||'') + ' ' + (j.company_name||'') + ' job')}`;\n    const highlights = (j.highlights || []).map(h => `${h.title}: ${(h.items||[]).join(', ')}`).join(' | ');\n    const snippet = [j.description, highlights].filter(Boolean).join(' | ').substring(0, 400);\n    results.push({ title: j.title||'', company: j.company_name||'', location: j.location||'', salary: j.salary || j.detected_extensions?.salary || '', posted: j.detected_extensions?.posted_at || '', url: applyUrl, snippet });\n  }\n}\nconst seen = new Set();\nconst deduped = results.filter(j => {\n  const key = `${j.title}|${j.company}`.toLowerCase();\n  if (seen.has(key)) return false;\n  seen.add(key); return true;\n});\nconsole.log(`Unique jobs found: ${deduped.length}`);\nreturn deduped.map(j => ({ json: j }));"
+      },
+      "id": "node-0005",
+      "name": "Parse Job Listings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $getWorkflowStaticData('global').profile;\nreturn $input.all().map(item => {\n  const j = item.json;\n  const body = JSON.stringify({\n    model: 'anthropic/claude-opus-4-5',\n    max_tokens: 150,\n    messages: [\n      { role: 'system', content: 'You are a job-fit evaluator. Reply ONLY with valid JSON, no markdown: {\"score\": <integer 1-10>, \"reason\": \"<one sentence>\", \"is_disqualified\": <true or false>}' },\n      { role: 'user', content: `Candidate: ${p.experience_summary} Skills: ${p.key_skills.join(', ')}. Disqualifiers: ${p.disqualifiers.join(', ')}.\\nJob: ${j.title} at ${j.company}. Location: ${j.location}. Salary: ${j.salary||'not listed'}. Description: ${j.snippet}\\nScore 1-10 fit.` }\n    ]\n  });\n  return { json: { ...j, _score_body: body } };\n});"
+      },
+      "id": "node-0006a",
+      "name": "Prepare Score Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ 'Bearer ' + $env.OPENROUTER_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Title", "value": "Job Search Agent" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ $json._score_body }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "node-0006b",
+      "name": "Score Job (Claude Opus)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "mode": "mergeByIndex"
+      },
+      "id": "node-0006c",
+      "name": "Merge Job and Score",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n  const i = item.json;\n  const content = (i.choices?.[0]?.message?.content || '').trim();\n  let score = 0, score_reason = 'not scored', is_disqualified = false;\n  try {\n    const parsed = JSON.parse(content);\n    score = typeof parsed.score === 'number' ? parsed.score : parseInt(parsed.score) || 0;\n    score_reason = parsed.reason || '';\n    is_disqualified = parsed.is_disqualified === true;\n  } catch(e) {\n    console.log(`Score parse error for \"${i.title}\": ${content}`);\n  }\n  console.log(`SCORE: ${i.title} @ ${i.company} => ${score}/10 disqualified=${is_disqualified}`);\n  return { json: { title: i.title, company: i.company, location: i.location, salary: i.salary, url: i.url, posted: i.posted, snippet: i.snippet, score, score_reason, is_disqualified } };\n});"
+      },
+      "id": "node-0007",
+      "name": "Parse Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-score",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 5,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-0008",
+      "name": "Score >= 5?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "jobs",
+        "include": "allFields"
+      },
+      "id": "node-0009",
+      "name": "Collect Matches",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2440, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawJobs = $input.first().json.jobs || [];\nconst jobs = rawJobs.map(j => j.json || j);\nconst todayFormatted = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });\n\nif (jobs.length === 0) {\n  return [{ json: { subject: 'Job Agent: No matches — ' + todayFormatted, body: '<html><body style=\"font-family:Arial,sans-serif\"><p>No jobs scored 5 or above today.</p></body></html>' } }];\n}\n\nconst sorted = [...jobs].sort((a, b) => b.score - a.score);\nconst top = sorted.slice(0, 30);\nlet cards = '';\nfor (let i = 0; i < top.length; i++) {\n  const job = top[i];\n  const color = job.score >= 8 ? '#16a34a' : job.score >= 6 ? '#ca8a04' : '#64748b';\n  const salaryLine = job.salary ? '<p style=\"font-size:13px;margin:4px 0\"><strong>Salary:</strong> ' + job.salary + '</p>' : '';\n  const reasonLine = job.score_reason ? '<p style=\"font-size:13px;color:#475569;margin:8px 0\"><em>' + job.score_reason + '</em></p>' : '';\n  const postedLine = job.posted ? ' &middot; Posted: ' + job.posted : '';\n  cards += '<div style=\"border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin:16px 0\">';\n  cards += '<h2 style=\"margin:0 0 4px;font-size:18px\">' + (i+1) + '. ' + job.title + '</h2>';\n  cards += '<p style=\"margin:0;color:#64748b;font-size:14px\">' + job.company + ' &middot; ' + (job.location || 'Remote') + postedLine + '</p>';\n  cards += '<p style=\"color:' + color + ';font-weight:700;margin:8px 0\">Score: ' + job.score + '/10</p>';\n  cards += salaryLine;\n  cards += reasonLine;\n  cards += '<a href=\"' + job.url + '\" style=\"display:inline-block;margin:8px 0;padding:8px 16px;background:#0f172a;color:white;text-decoration:none;border-radius:6px;font-size:13px\">View Job &rarr;</a>';\n  cards += '</div>';\n}\n\nconst shown = top.length < jobs.length ? ' (showing top ' + top.length + ')' : '';\nconst body = '<html><body style=\"font-family:Arial,sans-serif;max-width:700px;margin:0 auto;color:#1e293b\">'\n  + '<h1 style=\"color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:10px\">Job Agent &#8212; ' + todayFormatted + '</h1>'\n  + '<p style=\"color:#64748b\">Found <strong>' + jobs.length + ' match' + (jobs.length !== 1 ? 'es' : '') + '</strong> scoring 5+ this week' + shown + ', sorted by score.</p>'\n  + cards\n  + '<hr style=\"border:none;border-top:1px solid #e2e8f0;margin:24px 0\">'\n  + '<p style=\"font-size:12px;color:#94a3b8\">' + jobs.length + ' jobs scored 5+.</p>'\n  + '</body></html>';\n\nconst subject = 'Job Agent: ' + jobs.length + ' match' + (jobs.length !== 1 ? 'es' : '') + ' (5+) \\u2014 ' + todayFormatted;\nreturn [{ json: { subject, body } }];"
+      },
+      "id": "node-0010",
+      "name": "Build Email Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 180]
+    },
+    {
+      "parameters": {
+        "fromEmail": "naga.bathula@gmail.com",
+        "toEmail": "={{ $env.NOTIFY_EMAIL }}",
+        "subject": "={{ $json.subject }}",
+        "text": "",
+        "html": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "node-0011",
+      "name": "Send Email Digest",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [2880, 180],
+      "credentials": { "smtp": { "id": "smtp-credential-id", "name": "SMTP" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawJobs = $input.first().json.jobs || [];\nconst jobs = rawJobs.map(j => j.json || j);\nconst today = new Date().toISOString().split('T')[0];\nconst filename = 'jobs_' + today + '.csv';\n\nconst headers = ['title','company','location','salary','score','score_reason','url','posted','is_disqualified'];\nconst escape = v => '\"' + String(v || '').replace(/\"/g, '\"\"').replace(/\\n/g, ' ') + '\"';\nconst rows = [headers.join(','), ...jobs.map(j => headers.map(h => escape(j[h])).join(','))];\nconst csv = rows.join('\\n');\n\nreturn [{\n  json: { filename, count: jobs.length },\n  binary: {\n    data: {\n      data: Buffer.from(csv, 'utf-8').toString('base64'),\n      mimeType: 'text/csv',\n      fileName: filename,\n      fileExtension: 'csv'\n    }\n  }\n}];"
+      },
+      "id": "node-0012",
+      "name": "Build CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 420]
+    },
+    {
+      "parameters": {
+        "fileName": "={{ '/home/node/output/' + $json.filename }}",
+        "property": "data",
+        "options": {}
+      },
+      "id": "node-0013",
+      "name": "Write CSV File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [2880, 420]
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [[{ "node": "Load User Profile", "type": "main", "index": 0 }]]
+    },
+    "Load User Profile": {
+      "main": [[{ "node": "Build Search Queries", "type": "main", "index": 0 }]]
+    },
+    "Build Search Queries": {
+      "main": [[{ "node": "Search Jobs (SerpAPI)", "type": "main", "index": 0 }]]
+    },
+    "Search Jobs (SerpAPI)": {
+      "main": [[{ "node": "Parse Job Listings", "type": "main", "index": 0 }]]
+    },
+    "Parse Job Listings": {
+      "main": [[{ "node": "Prepare Score Request", "type": "main", "index": 0 }]]
+    },
+    "Prepare Score Request": {
+      "main": [[
+        { "node": "Score Job (Claude Opus)", "type": "main", "index": 0 },
+        { "node": "Merge Job and Score", "type": "main", "index": 0 }
+      ]]
+    },
+    "Score Job (Claude Opus)": {
+      "main": [[{ "node": "Merge Job and Score", "type": "main", "index": 1 }]]
+    },
+    "Merge Job and Score": {
+      "main": [[{ "node": "Parse Score", "type": "main", "index": 0 }]]
+    },
+    "Parse Score": {
+      "main": [[{ "node": "Score >= 5?", "type": "main", "index": 0 }]]
+    },
+    "Score >= 5?": {
+      "main": [
+        [{ "node": "Collect Matches", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Collect Matches": {
+      "main": [[
+        { "node": "Build Email Digest", "type": "main", "index": 0 },
+        { "node": "Build CSV", "type": "main", "index": 0 }
+      ]]
+    },
+    "Build Email Digest": {
+      "main": [[{ "node": "Send Email Digest", "type": "main", "index": 0 }]]
+    },
+    "Build CSV": {
+      "main": [[{ "node": "Write CSV File", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "tags": [{ "name": "job-agent" }]
+}

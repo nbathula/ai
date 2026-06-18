@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: job-agent-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/Chicago
+      # Persist credentials & workflows between restarts
+      - N8N_USER_FOLDER=/home/node/.n8n
+      # Expose your API keys to n8n via env vars
+      - SERPAPI_KEY=${SERPAPI_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - GMAIL_USER=${GMAIL_USER}
+      - NOTIFY_EMAIL=${NOTIFY_EMAIL}
+      # Disable telemetry
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./profile:/profile:ro        # user profile readable by n8n
+      - ./workflows:/workflows:ro    # workflow backups
+      - ./output:/home/node/output    # job results saved here (node user owns /home/node)
+
+volumes:
+  n8n_data:

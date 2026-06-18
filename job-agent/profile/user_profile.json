@@ -1,0 +1,93 @@
+{
+  "_instructions": "Fill in your details. The agent uses this to score job matches and write cover letters.",
+
+  "name": "Naga Bathula",
+  "email": "naga.bathula@gmail.com",
+  "location": "Chicago, IL",
+  "open_to_remote": true,
+  "open_to_relocate": false,
+
+  "target_roles": [
+    "Head of Data",
+    "VP of Data",
+    "Director of Data Science",
+    "Director of AI/ML",
+    "Chief Data Officer",
+    "Data & AI Leader"
+  ],
+
+  "target_companies": {
+    "industries": ["SaaS", "FinTech", "HealthTech", "RetailTech", "EdTech"],
+    "size": ["Series B", "Series C", "Mid-market", "Enterprise"],
+    "avoid": ["Consulting", "Staffing", "Government", "Non-profit"]
+  },
+
+  "salary": {
+    "minimum_usd": 200000,
+    "preferred_usd": 250000,
+    "includes": ["base", "bonus", "equity"]
+  },
+
+  "experience_summary": "Data & AI leader with 15+ years building data platforms and AI/ML capabilities at B2B SaaS companies. Track record of scaling data teams from scratch, shipping production ML models, and driving revenue through data products. Deep expertise in cloud-native architectures (AWS, GCP), MLOps, and translating business problems into measurable AI solutions.",
+
+  "key_skills": [
+    "Data Strategy & Roadmap",
+    "AI/ML Platform Architecture",
+    "MLOps & LLMOps",
+    "Team Building & Leadership",
+    "Databricks", "Spark", "dbt",
+    "AWS", "GCP",
+    "Python", "SQL",
+    "LLM / RAG / Agent Systems",
+    "Stakeholder Management",
+    "P&L Ownership"
+  ],
+
+  "achievements": [
+    "Built data platform from 0→1 serving 500+ internal users; reduced reporting latency from 24h to <1h",
+    "Led team of 18 data scientists, engineers, and analysts across 3 product lines",
+    "Deployed production ML churn model reducing customer churn by 22%",
+    "Architected real-time Sales Companion RAG agent on Databricks + AWS MSK",
+    "Drove $4M revenue uplift through recommendation and personalization models"
+  ],
+
+  "search_queries": [
+    "Head of Data Science AND SaaS",
+    "VP Data AND AI",
+    "Director of AI ML AND B2B",
+    "Chief Data Officer AND startup",
+    "Head of Data Platform AND remote"
+  ],
+
+  "locations_to_search": [
+    "Chicago, IL",
+    "Remote",
+    "San Francisco, CA",
+    "New York, NY",
+    "Austin, TX"
+  ],
+
+  "scoring_criteria": {
+    "must_have": [
+      "Leadership role (Head, VP, Director, or C-level)",
+      "B2B or SaaS company",
+      "Data Science or AI/ML ownership"
+    ],
+    "nice_to_have": [
+      "Remote or hybrid",
+      "Series B or later funding",
+      "Cloud-native stack",
+      "Explicit ML/AI product ownership"
+    ],
+    "disqualifiers": [
+      "Individual contributor only",
+      "Consulting or contract role",
+      "Requires relocation outside Chicago metro",
+      "Salary below $180K"
+    ]
+  },
+
+  "cover_letter_tone": "Professional but direct. Highlight strategic impact and business outcomes. Avoid buzzwords. Lead with a specific achievement relevant to the role. Keep under 300 words.",
+
+  "cover_letter_signature": "Naga Bathula\nnaga.bathula@gmail.com"
+}
